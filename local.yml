@@ -1,0 +1,35 @@
+---
+# Haven Blueshore — Pulse baseline playbook.
+# Applied by ansible-pull on macOS/Linux client machines every 6 hours.
+# No secrets in this repo: agent installers are fetched from the client's
+# own portal URL (passed in as portal_url), and those installers already
+# carry the pre-shared key / enrollment password / per-client Fleet secret.
+- name: Haven Blueshore Pulse baseline
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  tasks:
+    - name: Portal URL is set
+      ansible.builtin.assert:
+        that:
+          - portal_url is defined
+          - portal_url | length > 0
+        fail_msg: >-
+          portal_url is required — run the setup script from your
+          per-client portal link (see README.md).
+
+    - name: Ensure Zabbix agent is installed and running
+      ansible.builtin.include_role:
+        name: zabbix
+
+    - name: Ensure Wazuh agent is installed and running
+      ansible.builtin.include_role:
+        name: wazuh
+
+    - name: Ensure Fleet fleetd is installed and running
+      ansible.builtin.include_role:
+        name: fleet
+
+    - name: OS patching
+      ansible.builtin.include_role:
+        name: patch

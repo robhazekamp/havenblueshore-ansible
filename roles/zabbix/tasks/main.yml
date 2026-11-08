@@ -1,0 +1,79 @@
+---
+# Ensure the Zabbix agent is installed and running, using the pre-configured
+# installer from the client's portal URL. Idempotent: when the agent is
+# already active the installer is not re-run.
+- name: Check whether the Zabbix agent is active (Linux)
+  ansible.builtin.command: systemctl is-active --quiet zabbix-agent
+  register: hb_zabbix_linux
+  failed_when: false
+  changed_when: false
+  when: ansible_facts.os_family != "Darwin"
+
+- name: Check whether the Zabbix agent is running (macOS)
+  ansible.builtin.command: pgrep -x zabbix_agentd
+  register: hb_zabbix_macos
+  failed_when: false
+  changed_when: false
+  when: ansible_facts.os_family == "Darwin"
+
+# NOTE: the two checks above share no register name on purpose. A skipped
+# task overwrites its register with a "skipped" result that has no `rc`,
+# so two checks writing one name would clobber each other.
+- name: Record whether the Zabbix agent is active
+  ansible.builtin.set_fact:
+    hb_zabbix_running: "{{ (hb_zabbix_linux.rc == 0) if ansible_facts.os_family != 'Darwin' else (hb_zabbix_macos.rc == 0) }}"
+
+- name: Prepare the Zabbix work directory
+  ansible.builtin.file:
+    path: /tmp/haven-blueshore/zabbix
+    state: directory
+    mode: "0755"
+  when: not hb_zabbix_running
+
+- name: Download the Zabbix install script (Linux)
+  ansible.builtin.get_url:
+    url: "{{ portal_url }}/zabbix/linux/install-zabbix-agent.sh"
+    dest: /tmp/haven-blueshore/zabbix/install-zabbix-agent.sh
+    mode: "0755"
+  when:
+    - not hb_zabbix_running
+    - ansible_facts.os_family != "Darwin"
+
+- name: Download the Zabbix Linux packages
+  ansible.builtin.get_url:
+    url: "{{ portal_url }}/zabbix/linux/{{ item }}"
+    dest: "/tmp/haven-blueshore/zabbix/{{ item }}"
+    mode: "0644"
+  loop:
+    - zabbix-agent_6.4.21-1+ubuntu24.04_amd64.deb
+    - zabbix-agent_6.4.21-1+ubuntu22.04_amd64.deb
+    - zabbix-agent_6.4.21-1+debian12_amd64.deb
+    - zabbix-agent-6.4.21-release1.el9.x86_64.rpm
+    - zabbix_agent-6.4.21-linux-3.0-amd64-static.tar.gz
+  when:
+    - not hb_zabbix_running
+    - ansible_facts.os_family != "Darwin"
+
+- name: Download the Zabbix install script (macOS)
+  ansible.builtin.get_url:
+    url: "{{ portal_url }}/zabbix/macos/install-zabbix-agent.sh"
+    dest: /tmp/haven-blueshore/zabbix/install-zabbix-agent.sh
+    mode: "0755"
+  when:
+    - not hb_zabbix_running
+    - ansible_facts.os_family == "Darwin"
+
+- name: Download the Zabbix macOS tarball
+  ansible.builtin.get_url:
+    url: "{{ portal_url }}/zabbix/macos/zabbix_agent-6.4.21-macos-amd64-openssl.tar.gz"
+    dest: /tmp/haven-blueshore/zabbix/zabbix_agent-6.4.21-macos-amd64-openssl.tar.gz
+    mode: "0644"
+  when:
+    - not hb_zabbix_running
+    - ansible_facts.os_family == "Darwin"
+
+- name: Run the Zabbix installer
+  ansible.builtin.command:
+    cmd: bash install-zabbix-agent.sh
+    chdir: /tmp/haven-blueshore/zabbix
+  when: not hb_zabbix_running

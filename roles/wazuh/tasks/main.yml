@@ -1,0 +1,79 @@
+---
+# Ensure the Wazuh agent is installed and running, using the pre-configured
+# installer from the client's portal URL. Idempotent: when the agent is
+# already active the installer is not re-run.
+- name: Check whether the Wazuh agent is active (Linux)
+  ansible.builtin.command: systemctl is-active --quiet wazuh-agent
+  register: hb_wazuh_linux
+  failed_when: false
+  changed_when: false
+  when: ansible_facts.os_family != "Darwin"
+
+- name: Check whether the Wazuh agent is running (macOS)
+  ansible.builtin.command: pgrep -x wazuh-agentd
+  register: hb_wazuh_macos
+  failed_when: false
+  changed_when: false
+  when: ansible_facts.os_family == "Darwin"
+
+# NOTE: the two checks above share no register name on purpose. A skipped
+# task overwrites its register with a "skipped" result that has no `rc`,
+# so two checks writing one name would clobber each other.
+- name: Record whether the Wazuh agent is active
+  ansible.builtin.set_fact:
+    hb_wazuh_running: "{{ (hb_wazuh_linux.rc == 0) if ansible_facts.os_family != 'Darwin' else (hb_wazuh_macos.rc == 0) }}"
+
+- name: Prepare the Wazuh work directory
+  ansible.builtin.file:
+    path: /tmp/haven-blueshore/wazuh
+    state: directory
+    mode: "0755"
+  when: not hb_wazuh_running
+
+- name: Download the Wazuh install script (Linux)
+  ansible.builtin.get_url:
+    url: "{{ portal_url }}/wazuh/linux/install-wazuh-agent.sh"
+    dest: /tmp/haven-blueshore/wazuh/install-wazuh-agent.sh
+    mode: "0755"
+  when:
+    - not hb_wazuh_running
+    - ansible_facts.os_family != "Darwin"
+
+- name: Download the Wazuh Linux packages
+  ansible.builtin.get_url:
+    url: "{{ portal_url }}/wazuh/linux/{{ item }}"
+    dest: "/tmp/haven-blueshore/wazuh/{{ item }}"
+    mode: "0644"
+  loop:
+    - wazuh-agent_4.8.1-1_amd64.deb
+    - wazuh-agent-4.8.1-1.x86_64.rpm
+  when:
+    - not hb_wazuh_running
+    - ansible_facts.os_family != "Darwin"
+
+- name: Download the Wazuh install script (macOS)
+  ansible.builtin.get_url:
+    url: "{{ portal_url }}/wazuh/macos/install-wazuh-agent.sh"
+    dest: /tmp/haven-blueshore/wazuh/install-wazuh-agent.sh
+    mode: "0755"
+  when:
+    - not hb_wazuh_running
+    - ansible_facts.os_family == "Darwin"
+
+- name: Download the Wazuh macOS packages
+  ansible.builtin.get_url:
+    url: "{{ portal_url }}/wazuh/macos/{{ item }}"
+    dest: "/tmp/haven-blueshore/wazuh/{{ item }}"
+    mode: "0644"
+  loop:
+    - wazuh-agent-4.8.1-1.arm64.pkg
+    - wazuh-agent-4.8.1-1.intel64.pkg
+  when:
+    - not hb_wazuh_running
+    - ansible_facts.os_family == "Darwin"
+
+- name: Run the Wazuh installer
+  ansible.builtin.command:
+    cmd: bash install-wazuh-agent.sh
+    chdir: /tmp/haven-blueshore/wazuh
+  when: not hb_wazuh_running

@@ -1,0 +1,66 @@
+---
+# Ensure Fleet fleetd (orbit) is installed and running, using the per-client
+# package from the client's portal URL (per-client enroll secret already
+# baked in). Idempotent: when orbit is already running nothing is installed.
+- name: Check whether fleetd (orbit) is running
+  ansible.builtin.command: pgrep -f orbit
+  register: hb_fleet_active
+  failed_when: false
+  changed_when: false
+
+- name: Prepare the Fleet work directory
+  ansible.builtin.file:
+    path: /tmp/haven-blueshore/fleet
+    state: directory
+    mode: "0755"
+  when: hb_fleet_active.rc != 0
+
+- name: Download the Fleet package (Debian/Ubuntu)
+  ansible.builtin.get_url:
+    url: "{{ portal_url }}/fleet/linux/fleetd.deb"
+    dest: /tmp/haven-blueshore/fleet/fleetd.deb
+    mode: "0644"
+  when:
+    - hb_fleet_active.rc != 0
+    - ansible_facts.pkg_mgr == "apt"
+
+- name: Install the Fleet package (Debian/Ubuntu)
+  ansible.builtin.apt:
+    deb: /tmp/haven-blueshore/fleet/fleetd.deb
+  when:
+    - hb_fleet_active.rc != 0
+    - ansible_facts.pkg_mgr == "apt"
+
+- name: Download the Fleet package (RHEL)
+  ansible.builtin.get_url:
+    url: "{{ portal_url }}/fleet/linux/fleetd.rpm"
+    dest: /tmp/haven-blueshore/fleet/fleetd.rpm
+    mode: "0644"
+  when:
+    - hb_fleet_active.rc != 0
+    - ansible_facts.pkg_mgr == "dnf"
+
+- name: Install the Fleet package (RHEL)
+  ansible.builtin.dnf:
+    name: /tmp/haven-blueshore/fleet/fleetd.rpm
+    state: present
+    disable_gpg_check: true
+  when:
+    - hb_fleet_active.rc != 0
+    - ansible_facts.pkg_mgr == "dnf"
+
+- name: Download the Fleet package (macOS)
+  ansible.builtin.get_url:
+    url: "{{ portal_url }}/fleet/macos/fleetd.pkg"
+    dest: /tmp/haven-blueshore/fleet/fleetd.pkg
+    mode: "0644"
+  when:
+    - hb_fleet_active.rc != 0
+    - ansible_facts.os_family == "Darwin"
+
+- name: Install the Fleet package (macOS)
+  ansible.builtin.command:
+    cmd: installer -pkg /tmp/haven-blueshore/fleet/fleetd.pkg -target /
+  when:
+    - hb_fleet_active.rc != 0
+    - ansible_facts.os_family == "Darwin"
