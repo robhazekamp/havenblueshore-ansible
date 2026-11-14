@@ -1,0 +1,11 @@
+---
+# Semaphore smoke test — proves Semaphore can execute Ansible.
+# Runs against localhost only; makes no changes to the machine.
+- name: Semaphore smoke test
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  tasks:
+    - name: Show host facts
+      ansible.builtin.debug:
+        msg: "Semaphore smoke test OK on {{ ansible_hostname }} ({{ ansible_distribution }} {{ ansible_distribution_version }})"
